@@ -8,6 +8,11 @@
 #include <stdio.h>
 
 
+/*** defines***/
+
+#define CTRL_KEY(k) ((k) & 0x1f)
+
+
 /***data***/
 
 struct termios orig_termios;
@@ -24,6 +29,27 @@ void die(const char *s) {
 void disableRawMode(){
     if(tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios) == -1) die("tcsetattr");
 
+}
+
+char editorReadKey() {
+    int nread;
+    char c;
+    while((nread = read(STDIN_FILENO, &c, 1))!=1) {
+        if (nread == -1 ) die("read");
+    }
+    return c;
+}
+
+/***input***/
+void editorProcessKeyPress(){
+    char c = editorReadKey();
+
+
+    switch (c) {
+    case CTRL_KEY('q'):
+        exit(0);
+        break;
+    }
 }
 
 void enableRawMode(){
@@ -47,16 +73,9 @@ void enableRawMode(){
 
 /***init***/
 int main() {
-    enableRawMode();
-    while(1) {
-    char c ='\0';
-       if(  read(STDIN_FILENO,&c,1) == -1) die("read error");
-        if(iscntrl(c)){
-            printf("%d\r\n",c);
-        } else {
-            printf("%d ('%c')\r\n",c,c);
-        }
-        if(c=='q') break;
-    }
-    return 0;
+  enableRawMode();
+  while (1) {
+    editorProcessKeyPress();
+  }
+  return 0;
 }
