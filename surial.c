@@ -1,11 +1,13 @@
 /***includes***/
 
+#include <asm-generic/ioctls.h>
 #include <termios.h>
 #include <unistd.h>
 #include <termio.h>
 #include <stdlib.h>
 #include <ctype.h>
 #include <stdio.h>
+#include <sys/ioctl.h>
 
 
 /*** defines***/
@@ -15,7 +17,15 @@
 
 /***data***/
 
+struct editorConfig{
+  int screenrows;
+  int screencolumns;
+
 struct termios orig_termios;
+};
+
+struct editorConfig E;
+
 
 
 
@@ -23,11 +33,13 @@ struct termios orig_termios;
 /***terminal***/
 
 void die(const char *s) {
+    write(STDOUT_FILENO,"\x1b[2J", 4);
+  write(STDOUT_FILENO,"\x1b[H", 4);
   perror(s);
   exit(1);
 }
 void disableRawMode(){
-    if(tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios) == -1) die("tcsetattr");
+    if(tcsetattr(STDIN_FILENO, TCSAFLUSH, &E.orig_termios) == -1) die("tcsetattr");
 
 }
 
@@ -40,6 +52,45 @@ char editorReadKey() {
     return c;
 }
 
+int getWindowSize(int *rows, int *columns){
+  struct winsize ws;
+
+  if(ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0) {
+    if(write(STDOUT_FILENO, "\x1b[999C\x1b[999B", 12) != 12) return -1;
+    editorReadKey();
+    return -1;
+
+  } else {
+  *columns = ws.ws_col;
+  *rows = ws.ws_row;
+  return 0;
+  }
+}
+/***output***/
+
+
+// This function is used to draw tildes in the first of every row
+void editorDrawRows(){
+  int y;
+  for(y=0; y<E.screenrows;y++){
+write(STDOUT_FILENO, "~\r\n", 3);
+  }
+}
+
+// This function is used to clear the screen
+// /x1b is a escape sequence
+void editorRefreshScreen(){
+  write(STDOUT_FILENO,"\x1b[2J", 4);
+  write(STDOUT_FILENO,"\x1b[H", 4);
+  editorDrawRows();
+  write(STDOUT_FILENO,"\x1b[H",4);
+
+}
+
+
+
+
+
 /***input***/
 void editorProcessKeyPress(){
     char c = editorReadKey();
@@ -47,16 +98,18 @@ void editorProcessKeyPress(){
 
     switch (c) {
     case CTRL_KEY('q'):
+      write(STDOUT_FILENO,"\x1b[2J", 4);
+      write(STDOUT_FILENO,"\x1b[H", 4);
         exit(0);
         break;
     }
 }
 
 void enableRawMode(){
-   if( tcgetattr(STDIN_FILENO, &orig_termios) == -1) die("tcgetattr");
+   if( tcgetattr(STDIN_FILENO, &E.orig_termios) == -1) die("tcgetattr");
     atexit(disableRawMode);
 
-    struct termios raw = orig_termios;
+    struct termios raw = E.orig_termios;
 
 
     raw.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG );
@@ -72,9 +125,16 @@ void enableRawMode(){
 }
 
 /***init***/
+
+void initEditor(){
+
+  if(getWindowSize(&E.screenrows, &E.screencolumns)== -1) die("getWindowSize");
+}
 int main() {
+  initEditor();
   enableRawMode();
   while (1) {
+    editorRefreshScreen();
     editorProcessKeyPress();
   }
   return 0;
